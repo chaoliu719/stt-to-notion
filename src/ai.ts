@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { config } from "./config.js";
 
 export interface StructuredNote {
@@ -8,7 +9,7 @@ export interface StructuredNote {
   structured: string;
 }
 
-const SYSTEM_PROMPT = `你是一个录音笔记整理助手。整理用户的录音转写文本，以 JSON 格式返回，字段包括：
+const DEFAULT_SYSTEM_PROMPT = `你是一个录音笔记整理助手。整理用户的录音转写文本，以 JSON 格式返回，字段包括：
 - title：一句话标题
 - summary：2-3句摘要
 - category：从 想法/任务/记录/灵感 四选一
@@ -16,6 +17,15 @@ const SYSTEM_PROMPT = `你是一个录音笔记整理助手。整理用户的录
 - structured：规整后的正文 Markdown
 
 只返回 JSON 对象，不要任何多余文字。`;
+
+function loadSystemPrompt(): string {
+  const promptPath = process.env.PROMPT_FILE ?? "/app/prompt.txt";
+  try {
+    return readFileSync(promptPath, "utf-8").trim();
+  } catch {
+    return DEFAULT_SYSTEM_PROMPT;
+  }
+}
 
 interface OpenAIResponse {
   choices: Array<{
@@ -35,7 +45,7 @@ export async function structureNote(transcriptText: string): Promise<StructuredN
       body: JSON.stringify({
         model: config.dashscope.llmModel,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: loadSystemPrompt() },
           { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
         ],
       }),

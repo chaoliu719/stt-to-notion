@@ -18,6 +18,7 @@ export const config = {
     llmBaseUrl: process.env.DASHSCOPE_LLM_BASE_URL ?? "https://dashscope.aliyuncs.com",
     asrModel: process.env.ASR_MODEL ?? "fun-asr",
     llmModel: process.env.LLM_MODEL ?? "qwen-plus",
+    systemPrompt: process.env.SYSTEM_PROMPT,
   },
   notion: {
     token: required("NOTION_TOKEN"),
