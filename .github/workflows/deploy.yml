@@ -3,6 +3,7 @@ name: Build and Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 env:
   ACR_REGISTRY: crpi-q7c6zhbv16qchx4n.cn-hangzhou.personal.cr.aliyuncs.com
@@ -37,5 +38,6 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           script: |
+            docker login ${{ env.ACR_REGISTRY }} -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
             docker pull ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
             docker compose -f /root/stt-to-notion/docker-compose.yml up -d
