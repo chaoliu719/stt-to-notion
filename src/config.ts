@@ -14,7 +14,8 @@ export const config = {
   },
   dashscope: {
     apiKey: required("DASHSCOPE_API_KEY"),
-    baseUrl: process.env.DASHSCOPE_BASE_URL ?? "https://dashscope.aliyuncs.com",
+    asrBaseUrl: process.env.DASHSCOPE_ASR_BASE_URL ?? "https://dashscope.aliyuncs.com",
+    llmBaseUrl: process.env.DASHSCOPE_LLM_BASE_URL ?? "https://dashscope.aliyuncs.com",
     asrModel: process.env.ASR_MODEL ?? "fun-asr",
     llmModel: process.env.LLM_MODEL ?? "qwen-plus",
   },

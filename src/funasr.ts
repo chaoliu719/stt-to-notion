@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 
-const BASE = "https://llm-9bd7zrazwsfma54y.cn-beijing.maas.aliyuncs.com/api/v1";
+const BASE = `${config.dashscope.asrBaseUrl}/api/v1`;
 const HEADERS = {
   Authorization: `Bearer ${config.dashscope.apiKey}`,
   "Content-Type": "application/json",

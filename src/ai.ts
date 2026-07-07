@@ -17,17 +17,15 @@ const SYSTEM_PROMPT = `你是一个录音笔记整理助手。整理用户的录
 
 只返回 JSON 对象，不要任何多余文字。`;
 
-interface QwenResponse {
-  output: {
-    choices: Array<{
-      message: { content: string };
-    }>;
-  };
+interface OpenAIResponse {
+  choices: Array<{
+    message: { content: string };
+  }>;
 }
 
 export async function structureNote(transcriptText: string): Promise<StructuredNote> {
   const res = await fetch(
-    `${config.dashscope.baseUrl}/api/v1/services/aigc/text-generation/generation`,
+    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     {
       method: "POST",
       headers: {
@@ -36,19 +34,17 @@ export async function structureNote(transcriptText: string): Promise<StructuredN
       },
       body: JSON.stringify({
         model: config.dashscope.llmModel,
-        input: {
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
-          ],
-        },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
+        ],
       }),
     }
   );
   if (!res.ok) throw new Error(`AI request failed: ${res.status} ${await res.text()}`);
 
-  const data = (await res.json()) as QwenResponse;
-  const content = data.output.choices[0].message.content;
+  const data = (await res.json()) as OpenAIResponse;
+  const content = data.choices[0].message.content;
   return parseJson(content);
 }
 

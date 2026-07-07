@@ -22,18 +22,18 @@ function buildNotionPage(note: StructuredNote, ossKey: string) {
   return {
     parent: { database_id: config.notion.databaseId },
     properties: {
-      Name: { title: [{ text: { content: note.title } }] },
-      Summary: { rich_text: [{ text: { content: note.summary } }] },
-      Category: { select: { name: note.category } },
-      Tags: { multi_select: note.tags.map((tag) => ({ name: tag })) },
-      OSSKey: { rich_text: [{ text: { content: ossKey } }] },
+      "标题": { title: [{ text: { content: note.title || "未命名录音" } }] },
+      "摘要": { rich_text: [{ text: { content: note.summary || "" } }] },
+      "分类": { select: { name: note.category || "记录" } },
+      "标签": { multi_select: note.tags.map((tag) => ({ name: tag })) },
+      "源文件": { rich_text: [{ text: { content: ossKey } }] },
     },
     children: [
       {
         object: "block",
         type: "paragraph",
         paragraph: {
-          rich_text: [{ type: "text", text: { content: note.structured } }],
+          rich_text: [{ type: "text", text: { content: (note.structured || "").slice(0, 2000) } }],
         },
       },
     ],
