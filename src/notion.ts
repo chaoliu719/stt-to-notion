@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import type { StructuredNote } from "./ai.js";
+import { logger, type Logger } from "./logger.js";
 
 const NOTION_API = "https://api.notion.com/v1";
 const HEADERS = {
@@ -8,14 +9,20 @@ const HEADERS = {
   "Notion-Version": "2022-06-28",
 };
 
-export async function writeToNotion(note: StructuredNote, ossKey: string): Promise<void> {
+export async function writeToNotion(note: StructuredNote, ossKey: string, log: Logger = logger): Promise<void> {
   const body = buildNotionPage(note, ossKey);
   const res = await fetch(`${NOTION_API}/pages`, {
     method: "POST",
     headers: HEADERS,
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Notion write failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const errBody = await res.text();
+    log.error(`Notion 写入失败 status=${res.status}`, errBody);
+    throw new Error(`Notion write failed: ${res.status} ${errBody}`);
+  }
+  const data = (await res.json()) as { id: string };
+  log.info(`Notion 页面创建成功 page_id=${data.id}`);
 }
 
 function buildNotionPage(note: StructuredNote, ossKey: string) {

@@ -11,6 +11,7 @@ export const config = {
     accessKeySecret: required("OSS_ACCESS_KEY_SECRET"),
     bucket: required("OSS_BUCKET"),
     region: process.env.OSS_REGION ?? "oss-cn-hangzhou",
+    internal: process.env.OSS_INTERNAL === "true",
   },
   dashscope: {
     apiKey: required("DASHSCOPE_API_KEY"),
@@ -18,7 +19,6 @@ export const config = {
     llmBaseUrl: process.env.DASHSCOPE_LLM_BASE_URL ?? "https://dashscope.aliyuncs.com",
     asrModel: process.env.ASR_MODEL ?? "fun-asr",
     llmModel: process.env.LLM_MODEL ?? "qwen-plus",
-    systemPrompt: process.env.SYSTEM_PROMPT,
   },
   notion: {
     token: required("NOTION_TOKEN"),

@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { config } from "./config.js";
+import { logger, type Logger } from "./logger.js";
 
 export interface StructuredNote {
   title: string;
@@ -18,11 +19,14 @@ const DEFAULT_SYSTEM_PROMPT = `你是一个录音笔记整理助手。整理用�
 
 只返回 JSON 对象，不要任何多余文字。`;
 
-function loadSystemPrompt(): string {
+function loadSystemPrompt(log: Logger): string {
   const promptPath = process.env.PROMPT_FILE ?? "/app/prompt.txt";
   try {
-    return readFileSync(promptPath, "utf-8").trim();
+    const prompt = readFileSync(promptPath, "utf-8").trim();
+    log.debug(`使用外部 prompt 文件 ${promptPath}`);
+    return prompt;
   } catch {
+    log.debug("使用内置默认 prompt");
     return DEFAULT_SYSTEM_PROMPT;
   }
 }
@@ -33,7 +37,8 @@ interface OpenAIResponse {
   }>;
 }
 
-export async function structureNote(transcriptText: string): Promise<StructuredNote> {
+export async function structureNote(transcriptText: string, log: Logger = logger): Promise<StructuredNote> {
+  log.debug(`AI 整理开始 transcript长度=${transcriptText.length}`);
   const res = await fetch(
     "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     {
@@ -45,27 +50,38 @@ export async function structureNote(transcriptText: string): Promise<StructuredN
       body: JSON.stringify({
         model: config.dashscope.llmModel,
         messages: [
-          { role: "system", content: loadSystemPrompt() },
+          { role: "system", content: loadSystemPrompt(log) },
           { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
         ],
       }),
     }
   );
-  if (!res.ok) throw new Error(`AI request failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    log.error(`AI 请求失败 status=${res.status}`, body);
+    throw new Error(`AI request failed: ${res.status} ${body}`);
+  }
 
   const data = (await res.json()) as OpenAIResponse;
   const content = data.choices[0].message.content;
-  return parseJson(content);
+  return parseJson(content, log);
 }
 
-function parseJson(content: string): StructuredNote {
+function parseJson(content: string, log: Logger): StructuredNote {
   const blockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = blockMatch ? blockMatch[1].trim() : content.trim();
   try {
     return JSON.parse(raw);
   } catch {
     const objMatch = raw.match(/\{[\s\S]*\}/);
-    if (objMatch) return JSON.parse(objMatch[0]);
+    if (objMatch) {
+      try {
+        return JSON.parse(objMatch[0]);
+      } catch {
+        // fall through to error below
+      }
+    }
+    log.error("AI 返回内容不是合法 JSON", content.slice(0, 500));
     throw new Error("AI response is not valid JSON");
   }
 }
