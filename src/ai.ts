@@ -12,6 +12,7 @@ export async function structureNote(transcriptText: string, log: Logger = logger
   log.debug(`AI 整理开始 transcript长度=${transcriptText.length}`);
 
   // 用流式请求代替一次性等待完整响应：持续有数据流动，避免长耗时请求被中间网络当作空闲连接掐断
+  // enable_thinking 是 DashScope 扩展参数，关闭思考模型的推理过程以减少耗时
   const stream = await client.chat.completions.create({
     model: config.dashscope.llmModel,
     messages: [
@@ -19,18 +20,30 @@ export async function structureNote(transcriptText: string, log: Logger = logger
       { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
     ],
     stream: true,
-  });
+    enable_thinking: false,
+  } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
 
   let content = "";
+  let reasoning = "";
   let lastLogAt = Date.now();
+  let loggedContentLen = 0;
+  let loggedReasoningLen = 0;
   for await (const chunk of stream) {
-    content += chunk.choices[0]?.delta?.content ?? "";
+    const delta = chunk.choices[0]?.delta as { content?: string; reasoning_content?: string } | undefined;
+    content += delta?.content ?? "";
+    reasoning += delta?.reasoning_content ?? "";
     const now = Date.now();
-    if (now - lastLogAt >= 10_000) {
-      log.info(`AI 整理进行中 已接收长度=${content.length}`);
+    if (now - lastLogAt >= 1_500) {
+      const newReasoning = reasoning.slice(loggedReasoningLen);
+      const newContent = content.slice(loggedContentLen);
+      if (newReasoning) log.info(`AI 新增思考: ${newReasoning}`);
+      if (newContent) log.info(`AI 新增内容: ${newContent}`);
+      loggedReasoningLen = reasoning.length;
+      loggedContentLen = content.length;
       lastLogAt = now;
     }
   }
+  log.debug(`AI 思考过程: ${reasoning}`);
   log.debug(`AI 返回完整内容: ${content}`);
 
   return normalizeNote(parseJson(content, log), transcriptText, log);
