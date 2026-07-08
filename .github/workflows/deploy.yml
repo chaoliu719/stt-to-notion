@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
 env:
   ACR_REGISTRY: crpi-q7c6zhbv16qchx4n.cn-hangzhou.personal.cr.aliyuncs.com
   ACR_NAMESPACE: chaoliu719
