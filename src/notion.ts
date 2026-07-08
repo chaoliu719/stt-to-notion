@@ -9,8 +9,13 @@ const HEADERS = {
   "Notion-Version": "2022-06-28",
 };
 
-export async function writeToNotion(note: StructuredNote, ossKey: string, log: Logger = logger): Promise<void> {
-  const body = buildNotionPage(note, ossKey);
+export async function writeToNotion(
+  note: StructuredNote,
+  ossKey: string,
+  transcriptText: string,
+  log: Logger = logger
+): Promise<void> {
+  const body = buildNotionPage(note, ossKey, transcriptText);
   const res = await fetch(`${NOTION_API}/pages`, {
     method: "POST",
     headers: HEADERS,
@@ -25,7 +30,9 @@ export async function writeToNotion(note: StructuredNote, ossKey: string, log: L
   log.info(`Notion 页面创建成功 page_id=${data.id}`);
 }
 
-function buildNotionPage(note: StructuredNote, ossKey: string) {
+function buildNotionPage(note: StructuredNote, ossKey: string, transcriptText: string) {
+  const children = markdownToBlocks(note.structured || "");
+  children.push(buildTranscriptToggle(transcriptText));
   return {
     parent: { database_id: config.notion.databaseId },
     properties: {
@@ -35,7 +42,25 @@ function buildNotionPage(note: StructuredNote, ossKey: string) {
       "标签": { multi_select: note.tags.map((tag) => ({ name: tag })) },
       "源文件": { rich_text: [{ text: { content: ossKey } }] },
     },
-    children: markdownToBlocks(note.structured || ""),
+    children,
+  };
+}
+
+// 折叠的"原文"板块，存放未经 AI 整理的转写全文
+function buildTranscriptToggle(transcriptText: string) {
+  return {
+    object: "block",
+    type: "toggle",
+    toggle: {
+      rich_text: [{ type: "text", text: { content: "原文" } }],
+      children: [
+        {
+          object: "block",
+          type: "paragraph",
+          paragraph: { rich_text: toRichText(transcriptText || "") },
+        },
+      ],
+    },
   };
 }
 
@@ -137,5 +162,6 @@ function markdownToBlocks(markdown: string) {
   flushList();
 
   // Notion 单次请求最多 100 个子块
-  return blocks.slice(0, 100);
+  // 留一个位置给后面追加的"原文"折叠块
+  return blocks.slice(0, 99);
 }
