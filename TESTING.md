@@ -31,13 +31,12 @@ docker build -t stt-to-notion:local .
 
 ### 2. 启动容器
 
-复用项目里的 `.env` 和 `prompt.txt`：
+复用项目里的 `.env`：
 
 ```bash
 docker rm -f stt-to-notion-local 2>/dev/null
 docker run -d --name stt-to-notion-local -p 3000:3000 \
   --env-file .env \
-  -v "$(pwd)/prompt.txt:/app/prompt.txt:ro" \
   stt-to-notion:local
 ```
 

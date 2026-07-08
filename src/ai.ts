@@ -1,35 +1,6 @@
-import { readFileSync } from "fs";
 import { config } from "./config.js";
 import { logger, type Logger } from "./logger.js";
-
-export interface StructuredNote {
-  title: string;
-  summary: string;
-  category: "想法" | "任务" | "记录" | "灵感";
-  tags: string[];
-  structured: string;
-}
-
-const DEFAULT_SYSTEM_PROMPT = `你是一个录音笔记整理助手。整理用户的录音转写文本，以 JSON 格式返回，字段包括：
-- title：一句话标题
-- summary：2-3句摘要
-- category：从 想法/任务/记录/灵感 四选一
-- tags：字符串数组
-- structured：规整后的正文 Markdown
-
-只返回 JSON 对象，不要任何多余文字。`;
-
-function loadSystemPrompt(log: Logger): string {
-  const promptPath = process.env.PROMPT_FILE ?? "/app/prompt.txt";
-  try {
-    const prompt = readFileSync(promptPath, "utf-8").trim();
-    log.debug(`使用外部 prompt 文件 ${promptPath}`);
-    return prompt;
-  } catch {
-    log.debug("使用内置默认 prompt");
-    return DEFAULT_SYSTEM_PROMPT;
-  }
-}
+import { CATEGORY_OPTIONS, SYSTEM_PROMPT, type StructuredNote } from "./note-schema.js";
 
 interface OpenAIResponse {
   choices: Array<{
@@ -50,7 +21,7 @@ export async function structureNote(transcriptText: string, log: Logger = logger
       body: JSON.stringify({
         model: config.dashscope.llmModel,
         messages: [
-          { role: "system", content: loadSystemPrompt(log) },
+          { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
         ],
       }),
@@ -64,7 +35,7 @@ export async function structureNote(transcriptText: string, log: Logger = logger
 
   const data = (await res.json()) as OpenAIResponse;
   const content = data.choices[0].message.content;
-  return parseJson(content, log);
+  return normalizeNote(parseJson(content, log), log);
 }
 
 function parseJson(content: string, log: Logger): StructuredNote {
@@ -84,4 +55,12 @@ function parseJson(content: string, log: Logger): StructuredNote {
     log.error("AI 返回内容不是合法 JSON", content.slice(0, 500));
     throw new Error("AI response is not valid JSON");
   }
+}
+
+function normalizeNote(note: StructuredNote, log: Logger): StructuredNote {
+  if (!CATEGORY_OPTIONS.includes(note.category)) {
+    log.warn(`AI 返回了非法 category="${note.category}"，回退为"记录"`);
+    note.category = "记录";
+  }
+  return note;
 }

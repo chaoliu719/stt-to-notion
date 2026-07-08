@@ -1,5 +1,6 @@
 import { config } from "./config.js";
-import type { StructuredNote } from "./ai.js";
+import type { StructuredNote } from "./note-schema.js";
+import { NOTION_PROPERTIES } from "./note-schema.js";
 import { logger, type Logger } from "./logger.js";
 
 const NOTION_API = "https://api.notion.com/v1";
@@ -36,11 +37,11 @@ function buildNotionPage(note: StructuredNote, ossKey: string, transcriptText: s
   return {
     parent: { database_id: config.notion.databaseId },
     properties: {
-      "标题": { title: [{ text: { content: note.title || "未命名录音" } }] },
-      "摘要": { rich_text: [{ text: { content: note.summary || "" } }] },
-      "分类": { select: { name: note.category || "记录" } },
-      "标签": { multi_select: note.tags.map((tag) => ({ name: tag })) },
-      "源文件": { rich_text: [{ text: { content: ossKey } }] },
+      [NOTION_PROPERTIES.title.name]: { title: [{ text: { content: note.title || "未命名录音" } }] },
+      [NOTION_PROPERTIES.summary.name]: { rich_text: [{ text: { content: note.summary || "" } }] },
+      [NOTION_PROPERTIES.category.name]: { select: { name: note.category || "记录" } },
+      [NOTION_PROPERTIES.tags.name]: { multi_select: (note.tags ?? []).map((tag) => ({ name: tag })) },
+      [NOTION_PROPERTIES.sourceFile.name]: { rich_text: [{ text: { content: ossKey } }] },
     },
     children,
   };
