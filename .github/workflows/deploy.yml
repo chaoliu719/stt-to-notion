@@ -41,6 +41,6 @@ jobs:
           key: ${{ secrets.ECS_SSH_KEY }}
           script: |
             export STT_IMAGE=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
-            docker login ${{ secrets.ACR_REGISTRY }} -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+            echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_REGISTRY }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
             docker pull "$STT_IMAGE"
             docker compose -f ${{ secrets.ECS_DEPLOY_PATH }}/docker-compose.yml up -d
