@@ -1,6 +1,6 @@
 services:
   stt-to-notion:
-    image: crpi-q7c6zhbv16qchx4n.cn-hangzhou.personal.cr.aliyuncs.com/chaoliu719/stt-to-notion:latest
+    image: ${STT_IMAGE}
     container_name: stt-to-notion
     restart: always
     ports:

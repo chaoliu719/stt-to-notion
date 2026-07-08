@@ -10,8 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ACR_REGISTRY: crpi-q7c6zhbv16qchx4n.cn-hangzhou.personal.cr.aliyuncs.com
-  ACR_NAMESPACE: chaoliu719
   IMAGE_NAME: stt-to-notion
 
 jobs:
@@ -24,7 +22,7 @@ jobs:
       - name: Login to ACR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.ACR_REGISTRY }}
+          registry: ${{ secrets.ACR_REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
@@ -33,7 +31,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Deploy to ECS
         uses: appleboy/ssh-action@v1
@@ -42,6 +40,7 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           script: |
-            docker login ${{ env.ACR_REGISTRY }} -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
-            docker pull ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
-            docker compose -f /root/stt-to-notion/docker-compose.yml up -d
+            export STT_IMAGE=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+            docker login ${{ secrets.ACR_REGISTRY }} -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+            docker pull "$STT_IMAGE"
+            docker compose -f ${{ secrets.ECS_DEPLOY_PATH }}/docker-compose.yml up -d
