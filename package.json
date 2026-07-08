@@ -10,7 +10,8 @@
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "ali-oss": "^6.21.0",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "openai": "^4.104.0"
   },
   "devDependencies": {
     "@types/ali-oss": "^6.16.11",

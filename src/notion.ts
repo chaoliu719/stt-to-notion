@@ -47,7 +47,7 @@ function buildNotionPage(note: StructuredNote, ossKey: string, transcriptText: s
   };
 }
 
-// 折叠的"原文"板块，存放未经 AI 整理的转写全文
+// 折叠的"原文"板块，存放 AI 规整后的转写全文
 function buildTranscriptToggle(transcriptText: string) {
   return {
     object: "block",

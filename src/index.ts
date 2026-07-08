@@ -39,7 +39,7 @@ async function processVoiceMemo(taskId: string, ossKey: string) {
 
     // 4. 写入 Notion
     elapsed = startTimer();
-    await writeToNotion(note, ossKey, transcript.text, log);
+    await writeToNotion(note, ossKey, note.cleanedTranscript, log);
     log.info(`[5/5] 写入 Notion 完成 耗时=${elapsed()}`);
 
     log.info(`流水线全部完成 总耗时=${totalElapsed()}`);
