@@ -35,14 +35,107 @@ function buildNotionPage(note: StructuredNote, ossKey: string) {
       "标签": { multi_select: note.tags.map((tag) => ({ name: tag })) },
       "源文件": { rich_text: [{ text: { content: ossKey } }] },
     },
-    children: [
-      {
-        object: "block",
-        type: "paragraph",
-        paragraph: {
-          rich_text: [{ type: "text", text: { content: (note.structured || "").slice(0, 2000) } }],
-        },
-      },
-    ],
+    children: markdownToBlocks(note.structured || ""),
   };
+}
+
+type RichTextSpan = { type: "text"; text: { content: string }; annotations?: { bold?: boolean; italic?: boolean; code?: boolean } };
+
+// 解析行内 **加粗**、*斜体*、`代码` 为带样式的富文本片段
+function parseInlineMarkdown(text: string): RichTextSpan[] {
+  const spans: RichTextSpan[] = [];
+  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      spans.push({ type: "text", text: { content: text.slice(lastIndex, match.index) } });
+    }
+    if (match[1] !== undefined) {
+      spans.push({ type: "text", text: { content: match[1] }, annotations: { bold: true } });
+    } else if (match[2] !== undefined) {
+      spans.push({ type: "text", text: { content: match[2] }, annotations: { italic: true } });
+    } else if (match[3] !== undefined) {
+      spans.push({ type: "text", text: { content: match[3] }, annotations: { code: true } });
+    }
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    spans.push({ type: "text", text: { content: text.slice(lastIndex) } });
+  }
+  return spans.length > 0 ? spans : [{ type: "text", text: { content: text } }];
+}
+
+// Notion 富文本单段最长 2000 字符，需分段
+function toRichText(text: string): RichTextSpan[] {
+  const spans = parseInlineMarkdown(text);
+  const result: RichTextSpan[] = [];
+  for (const span of spans) {
+    const content = span.text.content;
+    for (let i = 0; i < content.length; i += 2000) {
+      result.push({ ...span, text: { content: content.slice(i, i + 2000) } });
+    }
+  }
+  return result;
+}
+
+function markdownToBlocks(markdown: string) {
+  const lines = markdown.split(/\r?\n/);
+  const blocks: Record<string, unknown>[] = [];
+  let listBuffer: { type: "bulleted_list_item" | "numbered_list_item"; text: string }[] = [];
+
+  const flushList = () => {
+    for (const item of listBuffer) {
+      blocks.push({
+        object: "block",
+        type: item.type,
+        [item.type]: { rich_text: toRichText(item.text) },
+      });
+    }
+    listBuffer = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (!line.trim()) {
+      flushList();
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.*)$/);
+    if (heading) {
+      flushList();
+      const level = heading[1].length;
+      const type = `heading_${level}` as "heading_1" | "heading_2" | "heading_3";
+      blocks.push({
+        object: "block",
+        type,
+        [type]: { rich_text: toRichText(heading[2]) },
+      });
+      continue;
+    }
+
+    const bullet = line.match(/^[-*]\s+(.*)$/);
+    if (bullet) {
+      listBuffer.push({ type: "bulleted_list_item", text: bullet[1] });
+      continue;
+    }
+
+    const numbered = line.match(/^\d+[.)]\s+(.*)$/);
+    if (numbered) {
+      listBuffer.push({ type: "numbered_list_item", text: numbered[1] });
+      continue;
+    }
+
+    flushList();
+    blocks.push({
+      object: "block",
+      type: "paragraph",
+      paragraph: { rich_text: toRichText(line) },
+    });
+  }
+  flushList();
+
+  // Notion 单次请求最多 100 个子块
+  return blocks.slice(0, 100);
 }
