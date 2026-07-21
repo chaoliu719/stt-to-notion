@@ -1,22 +1,26 @@
 import OpenAI from "openai";
 import { config } from "./config.js";
 import { logger, type Logger } from "./logger.js";
-import { CATEGORY_OPTIONS, SYSTEM_PROMPT, type StructuredNote } from "./note-schema.js";
+import { buildSystemPrompt, type StructuredNote } from "./note-schema.js";
 
 const client = new OpenAI({
   apiKey: config.dashscope.apiKey,
   baseURL: `${config.dashscope.llmBaseUrl}/compatible-mode/v1`,
 });
 
-export async function structureNote(transcriptText: string, log: Logger = logger): Promise<StructuredNote> {
-  log.debug(`AI 整理开始 transcript长度=${transcriptText.length}`);
+export async function structureNote(
+  transcriptText: string,
+  categories: readonly string[],
+  log: Logger = logger
+): Promise<StructuredNote> {
+  log.debug(`AI 整理开始 transcript长度=${transcriptText.length} 可选分类=${categories.join("/")}`);
 
   // 用流式请求代替一次性等待完整响应：持续有数据流动，避免长耗时请求被中间网络当作空闲连接掐断
   // enable_thinking 是 DashScope 扩展参数，关闭思考模型的推理过程以减少耗时
   const stream = await client.chat.completions.create({
     model: config.dashscope.llmModel,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: buildSystemPrompt(categories) },
       { role: "user", content: `以下是录音转写文本，请整理：\n\n${transcriptText}` },
     ],
     stream: true,
@@ -46,7 +50,7 @@ export async function structureNote(transcriptText: string, log: Logger = logger
   log.debug(`AI 思考过程: ${reasoning}`);
   log.debug(`AI 返回完整内容: ${content}`);
 
-  return normalizeNote(parseJson(content, log), transcriptText, log);
+  return normalizeNote(parseJson(content, log), transcriptText, categories, log);
 }
 
 function parseJson(content: string, log: Logger): StructuredNote {
@@ -68,10 +72,17 @@ function parseJson(content: string, log: Logger): StructuredNote {
   }
 }
 
-function normalizeNote(note: StructuredNote, transcriptText: string, log: Logger): StructuredNote {
-  if (!CATEGORY_OPTIONS.includes(note.category)) {
-    log.warn(`AI 返回了非法 category="${note.category}"，回退为"记录"`);
-    note.category = "记录";
+function normalizeNote(
+  note: StructuredNote,
+  transcriptText: string,
+  categories: readonly string[],
+  log: Logger
+): StructuredNote {
+  // 回退到第一个选项：Notion 的分类是用户随时可改的，写入不存在的选项会让 Notion 自动新建，反而破坏用户的分类体系
+  if (!categories.includes(note.category)) {
+    const fallback = categories[0];
+    log.warn(`AI 返回了非法 category="${note.category}"，回退为"${fallback}"`);
+    note.category = fallback;
   }
   if (!note.cleanedTranscript || !note.cleanedTranscript.trim()) {
     log.warn("AI 未返回 cleanedTranscript，回退为原始转写文本");

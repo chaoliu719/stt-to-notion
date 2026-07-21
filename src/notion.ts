@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import type { StructuredNote } from "./note-schema.js";
-import { NOTION_PROPERTIES } from "./note-schema.js";
+import { DEFAULT_CATEGORY_OPTIONS, NOTION_PROPERTIES } from "./note-schema.js";
 import { logger, type Logger } from "./logger.js";
 
 const NOTION_API = "https://api.notion.com/v1";
@@ -9,6 +9,36 @@ const HEADERS = {
   "Content-Type": "application/json",
   "Notion-Version": "2022-06-28",
 };
+
+interface DatabaseResponse {
+  properties: Record<string, { type: string; select?: { options?: Array<{ name: string }> } }>;
+}
+
+// 每次流水线开始前读一次数据库 schema，让「分类」选项以 Notion 里的实际配置为准：
+// 用户在 Notion 里增删分类立即生效，不需要改代码重新部署
+export async function fetchCategoryOptions(log: Logger = logger): Promise<string[]> {
+  const fallback = [...DEFAULT_CATEGORY_OPTIONS];
+  const propName = NOTION_PROPERTIES.category.name;
+  try {
+    const res = await fetch(`${NOTION_API}/databases/${config.notion.databaseId}`, { headers: HEADERS });
+    if (!res.ok) {
+      log.warn(`读取 Notion 分类选项失败 status=${res.status}，回退为默认分类`, await res.text());
+      return fallback;
+    }
+    const data = (await res.json()) as DatabaseResponse;
+    const options = (data.properties?.[propName]?.select?.options ?? [])
+      .map((opt) => opt.name)
+      .filter((name) => name.trim().length > 0);
+    if (options.length === 0) {
+      log.warn(`Notion 属性「${propName}」没有可用选项，回退为默认分类`);
+      return fallback;
+    }
+    return options;
+  } catch (err) {
+    log.warn(`读取 Notion 分类选项异常，回退为默认分类`, err instanceof Error ? err.message : String(err));
+    return fallback;
+  }
+}
 
 export async function writeToNotion(
   note: StructuredNote,
@@ -39,7 +69,7 @@ function buildNotionPage(note: StructuredNote, ossKey: string, transcriptText: s
     properties: {
       [NOTION_PROPERTIES.title.name]: { title: [{ text: { content: note.title || "未命名录音" } }] },
       [NOTION_PROPERTIES.summary.name]: { rich_text: [{ text: { content: note.summary || "" } }] },
-      [NOTION_PROPERTIES.category.name]: { select: { name: note.category || "记录" } },
+      [NOTION_PROPERTIES.category.name]: { select: { name: note.category } },
       [NOTION_PROPERTIES.tags.name]: { multi_select: (note.tags ?? []).map((tag) => ({ name: tag })) },
       [NOTION_PROPERTIES.sourceFile.name]: { rich_text: [{ text: { content: ossKey } }] },
     },

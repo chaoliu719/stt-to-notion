@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { buildOssKey, getPresignedUrl, uploadAudio } from "./oss.js";
 import { fetchTranscript, pollUntilDone, submitTranscription } from "./funasr.js";
 import { structureNote } from "./ai.js";
-import { writeToNotion } from "./notion.js";
+import { fetchCategoryOptions, writeToNotion } from "./notion.js";
 import { config } from "./config.js";
 import { logger, startTimer } from "./logger.js";
 
@@ -34,7 +34,9 @@ async function processVoiceMemo(taskId: string, ossKey: string) {
     // 3. 获取转写文本 → AI 整理
     elapsed = startTimer();
     const transcript = await fetchTranscript(transcriptionUrl, log);
-    const note = await structureNote(transcript.text, log);
+    const categories = await fetchCategoryOptions(log);
+    log.info(`可选分类（来自 Notion）=${categories.join("/")}`);
+    const note = await structureNote(transcript.text, categories, log);
     log.info(`[4/5] AI 整理完成 title=${note.title} category=${note.category} tags=${note.tags.length} 耗时=${elapsed()}`);
 
     // 4. 写入 Notion
