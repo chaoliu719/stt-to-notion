@@ -47,18 +47,52 @@ export async function writeToNotion(
   log: Logger = logger
 ): Promise<void> {
   const body = buildNotionPage(note, ossKey, transcriptText);
-  const res = await fetch(`${NOTION_API}/pages`, {
-    method: "POST",
-    headers: HEADERS,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
+  const { maxAttempts, initialDelayMs, backoffFactor } = config.notion.retry;
+  let delay = initialDelayMs;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${NOTION_API}/pages`, {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      // fetch 抛异常 = 网络层失败（连接失败/超时/DNS，即日志里的 fetch failed），属于瞬时故障可重试
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt < maxAttempts) {
+        log.warn(`Notion 写入网络异常，第 ${attempt}/${maxAttempts} 次，${Math.round(delay / 1000)}s 后重试`, msg);
+        await sleep(delay);
+        delay = Math.round(delay * backoffFactor);
+        continue;
+      }
+      log.error(`Notion 写入失败，已重试 ${maxAttempts} 次`, msg);
+      throw err;
+    }
+
+    if (res.ok) {
+      const data = (await res.json()) as { id: string };
+      log.info(`Notion 页面创建成功 page_id=${data.id}${attempt > 1 ? `（第 ${attempt} 次尝试）` : ""}`);
+      return;
+    }
+
     const errBody = await res.text();
+    // 429（限流）和 5xx（服务端错误）是瞬时的可重试；其它 4xx 是请求本身有问题，重试也不会成功
+    const retryable = res.status === 429 || res.status >= 500;
+    if (retryable && attempt < maxAttempts) {
+      log.warn(`Notion 写入失败 status=${res.status}，第 ${attempt}/${maxAttempts} 次，${Math.round(delay / 1000)}s 后重试`, errBody);
+      await sleep(delay);
+      delay = Math.round(delay * backoffFactor);
+      continue;
+    }
     log.error(`Notion 写入失败 status=${res.status}`, errBody);
     throw new Error(`Notion write failed: ${res.status} ${errBody}`);
   }
-  const data = (await res.json()) as { id: string };
-  log.info(`Notion 页面创建成功 page_id=${data.id}`);
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function buildNotionPage(note: StructuredNote, ossKey: string, transcriptText: string) {

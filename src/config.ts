@@ -23,6 +23,12 @@ export const config = {
   notion: {
     token: required("NOTION_TOKEN"),
     databaseId: required("NOTION_DATABASE_ID"),
+    // 写入 Notion 的重试配置：应对偶发的网络抖动（fetch failed）、429 限流、5xx 服务端错误
+    retry: {
+      maxAttempts: Number(process.env.NOTION_RETRY_MAX_ATTEMPTS ?? 3),
+      initialDelayMs: Number(process.env.NOTION_RETRY_INITIAL_DELAY_MS ?? 1000),
+      backoffFactor: Number(process.env.NOTION_RETRY_BACKOFF_FACTOR ?? 2),
+    },
   },
   // 轮询配置
   poll: {
