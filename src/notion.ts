@@ -135,32 +135,44 @@ function toRichText(text: string): RichTextSpan[] {
   return result;
 }
 
+type ListItemType = "bulleted_list_item" | "numbered_list_item";
+type NotionBlock = Record<string, any>;
+
+// Notion 单次创建请求最多支持两层嵌套（顶层块 + 一层 children），再深会整条请求被拒。
+// AI 若产出更深的缩进，统一压平到第 2 层，保证列表仍以原生块渲染而不是回退成原始 Markdown 文本。
+const MAX_LIST_LEVEL = 2;
+
+function makeListBlock(type: ListItemType, text: string): NotionBlock {
+  return { object: "block", type, [type]: { rich_text: toRichText(text) } };
+}
+
+// 把某个列表项挂到父项的 children 下（懒创建 children 数组）
+function appendChild(parent: NotionBlock, child: NotionBlock) {
+  const body = parent[parent.type as string];
+  if (!body.children) body.children = [];
+  body.children.push(child);
+}
+
 function markdownToBlocks(markdown: string) {
   const lines = markdown.split(/\r?\n/);
-  const blocks: Record<string, unknown>[] = [];
-  let listBuffer: { type: "bulleted_list_item" | "numbered_list_item"; text: string }[] = [];
+  const blocks: NotionBlock[] = [];
+  // 记录当前打开的列表层级：按缩进量递增，栈顶是最内层；level 是压平后的实际嵌套层（1 起）
+  let listStack: { indent: number; level: number; block: NotionBlock }[] = [];
 
-  const flushList = () => {
-    for (const item of listBuffer) {
-      blocks.push({
-        object: "block",
-        type: item.type,
-        [item.type]: { rich_text: toRichText(item.text) },
-      });
-    }
-    listBuffer = [];
+  const resetList = () => {
+    listStack = [];
   };
 
   for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
+    const line = rawLine.replace(/\s+$/, "");
     if (!line.trim()) {
-      flushList();
+      resetList();
       continue;
     }
 
     const heading = line.match(/^(#{1,3})\s+(.*)$/);
     if (heading) {
-      flushList();
+      resetList();
       const level = heading[1].length;
       const type = `heading_${level}` as "heading_1" | "heading_2" | "heading_3";
       blocks.push({
@@ -171,28 +183,46 @@ function markdownToBlocks(markdown: string) {
       continue;
     }
 
-    const bullet = line.match(/^[-*]\s+(.*)$/);
-    if (bullet) {
-      listBuffer.push({ type: "bulleted_list_item", text: bullet[1] });
+    // 同时捕获前导缩进，用缩进量判断嵌套层级；支持 -/* 无序与 1. / 1) 有序
+    const listItem = line.match(/^(\s*)(?:[-*]|\d+[.)])\s+(.*)$/);
+    if (listItem) {
+      const indent = listItem[1].replace(/\t/g, "    ").length;
+      const text = listItem[2];
+      const type: ListItemType = /^\s*\d+[.)]/.test(line) ? "numbered_list_item" : "bulleted_list_item";
+      const block = makeListBlock(type, text);
+
+      // 弹出所有缩进 >= 当前项的层级，剩下的栈顶即为父项
+      while (listStack.length > 0 && listStack[listStack.length - 1].indent >= indent) {
+        listStack.pop();
+      }
+
+      // 找到最深的、还没到嵌套上限的祖先做父项；更深的缩进会被压平成它的子项
+      let parentIdx = listStack.length - 1;
+      while (parentIdx >= 0 && listStack[parentIdx].level >= MAX_LIST_LEVEL) {
+        parentIdx--;
+      }
+
+      let level: number;
+      if (parentIdx < 0) {
+        blocks.push(block);
+        level = 1;
+      } else {
+        appendChild(listStack[parentIdx].block, block);
+        level = listStack[parentIdx].level + 1;
+      }
+      listStack.push({ indent, level, block });
       continue;
     }
 
-    const numbered = line.match(/^\d+[.)]\s+(.*)$/);
-    if (numbered) {
-      listBuffer.push({ type: "numbered_list_item", text: numbered[1] });
-      continue;
-    }
-
-    flushList();
+    resetList();
     blocks.push({
       object: "block",
       type: "paragraph",
       paragraph: { rich_text: toRichText(line) },
     });
   }
-  flushList();
 
-  // Notion 单次请求最多 100 个子块
+  // Notion 单次请求最多 100 个顶层子块
   // 留一个位置给后面追加的"原文"折叠块
   return blocks.slice(0, 99);
 }
